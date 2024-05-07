@@ -4,8 +4,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
+#define BLOCK_SIZE (256 * 1024) // Tamaño de bloque en bytes (256 KB)
+
+struct posix_header {
+    char name[100];          /* Nombre del archivo */
+    char mode[8];            /* Modo de archivo */
+    char uid[8];             /* ID de usuario */
+    char gid[8];             /* ID de grupo */
+    char size[12];           /* Tamaño del archivo en bytes (octal) */
+    char mtime[12];          /* Tiempo de modificación en formato numérico Unix (octal) */
+    char checksum[8];        /* Suma de verificación para el encabezado */
+    char typeflag[1];        /* Tipo de archivo */
+    char linkname[100];      /* Nombre del enlace */
+    /* Agregar más campos si es necesario */
+    char pad[255];           /* Relleno para hacer el encabezado de 512 bytes */
+};
+
 // create will add files to a new tar file
-int create(char *files[], int fileCount, char *filename) {
+int create(char *input_files[], int num_files, char *output_file) {
   if (filename == NULL) {
     logError("filename must be specified to create a tar file");
     return 1;
@@ -14,6 +31,54 @@ int create(char *files[], int fileCount, char *filename) {
   char message[100];
   snprintf(message, 100, "starting to create %s", filename);
   logVerbose(message);
+  FILE *output = fopen(output_file, "wb");
+    if (!output) {
+        printf("Error al abrir el archivo de salida.\n");
+        return;
+    }
+
+    // Iterar sobre los archivos de entrada y escribirlos en el archivo .tar
+    for (int i = 0; i < num_files; i++) {
+        FILE *input = fopen(input_files[i], "rb");
+        if (!input) {
+            printf("No se pudo abrir el archivo %s\n", input_files[i]);
+            continue;
+        }
+
+        // Obtener el tamaño del archivo de entrada
+        long file_size = 0;
+        fseek(input, 0, SEEK_END);
+        file_size = ftell(input);
+        fseek(input, 0, SEEK_SET);
+
+        printf("Archivo: %s, Tamaño: %ld bytes\n", input_files[i], file_size);
+
+        // Crear el encabezado para el archivo
+        struct posix_header header;
+        memset(&header, 0, sizeof(header));
+        strncpy(header.name, input_files[i], 100);
+        snprintf(header.mode, 8, "%07o", 0644); // Modo de archivo: rw-r--r--
+        snprintf(header.size, 12, "%011lo", (unsigned long)file_size); // Tamaño del archivo en octal
+        snprintf(header.typeflag, 1, "%c", '0'); // Tipo de archivo: archivo normal
+
+        // Escribir el encabezado en el archivo .tar
+        fwrite(&header, sizeof(header), 1, output);
+
+        // Escribir el contenido del archivo en bloques de datos
+        char buffer[BLOCK_SIZE];
+        size_t bytes_read;
+        int num_blocks = (file_size + BLOCK_SIZE - 1) / BLOCK_SIZE; // Calcular el número de bloques
+        printf("Número de bloques: %d\n", num_blocks);
+        for (int j = 0; j < num_blocks; j++) {
+            bytes_read = fread(buffer, 1, BLOCK_SIZE, input);
+            fwrite(buffer, 1, bytes_read, output);
+        }
+
+        fclose(input);
+    }
+
+    fclose(output);
+
 
   return 0;
 }
@@ -28,11 +93,32 @@ int extract(char *files[], int fileCount, char *filename) {
 }
 
 // list will list all the contents from an archive
-int list(char *files[], int fileCount, char *filename) {
+// el files y fileCount deberia de quitarse
+int list(char *files[], int fileCount, char *tar_file) {
   char message[100];
   snprintf(message, 100, "list of files in %s", filename);
   logVerbose(message);
+  FILE *tar = fopen(tar_file, "rb");
+    if (!tar) {
+        printf("Error al abrir el archivo .tar\n");
+        return;
+    }
 
+    // Leer el archivo .tar y mostrar los nombres de los archivos dentro de él
+    struct posix_header header;
+    while (fread(&header, sizeof(header), 1, tar) > 0) {
+        if (header.name[0] == '\0') // Fin del archivo tar
+            break;
+        
+        printf("%s\n", header.name);
+
+        // Calcular el tamaño del archivo y saltar al siguiente encabezado
+        long file_size = strtol(header.size, NULL, 8);
+        int remaining_blocks = (file_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        fseek(tar, remaining_blocks * BLOCK_SIZE, SEEK_CUR); // Saltar al siguiente encabezado
+    }
+
+    fclose(tar);
   return 0;
 }
 
