@@ -193,10 +193,18 @@ int extract(char *filename) {
       continue; // Continue with next files
     }
 
+    snprintf(message, sizeof(message), "starting to create %s",
+             header->files[i].filename);
+    logVerbose(message);
+
     size_t currentBlockIndex = filePosition;
     size_t totalBytesWritten = 0;
 
     while (totalBytesWritten < fileSize) {
+      snprintf(message, sizeof(message), "reading block #%d",
+               currentBlockIndex);
+      logVerbose(message);
+
       // Seek to the current block in the archive file
       fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE,
             SEEK_SET);
