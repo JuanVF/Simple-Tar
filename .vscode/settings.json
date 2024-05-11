@@ -1,11 +1,15 @@
 {
-    "C_Cpp.clang_format_fallbackStyle": "LLVM",
-    "files.associations": {
-        "commands.h": "c",
-        "cstdlib": "c",
-        "string.h": "c",
-        "stdio.h": "c",
-        "logs.h": "c",
-        "stdbool.h": "c"
-    }
+  "C_Cpp.clang_format_fallbackStyle": "LLVM",
+  "files.associations": {
+    "commands.h": "c",
+    "cstdlib": "c",
+    "string.h": "c",
+    "stdio.h": "c",
+    "logs.h": "c",
+    "stdbool.h": "c",
+    "system_error": "c",
+    "array": "c",
+    "string_view": "c",
+    "initializer_list": "c"
+  }
 }

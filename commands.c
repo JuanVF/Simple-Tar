@@ -118,13 +118,13 @@ int callCommands(Flags command, char *files[], int fileCount, char *filename) {
     return displayHelp();
   }
   if (command == EXTRACT) {
-    return extract(files, fileCount, filename);
+    return extract(filename);
   }
   if (command == CREATE) {
     return create(files, fileCount, filename);
   }
   if (command == LIST) {
-    return list(files, fileCount, filename);
+    return list(filename);
   }
   if (command == DELETE) {
     return delete (files, fileCount, filename);
@@ -136,7 +136,7 @@ int callCommands(Flags command, char *files[], int fileCount, char *filename) {
     return append(files, fileCount, filename);
   }
   if (command == PACK) {
-    return pack(files, fileCount, filename);
+    return pack(filename);
   }
 
   return 0;
@@ -232,7 +232,7 @@ void getFiles(int argumentCount, char *argumentList[], int *fileCount,
   for (int i = startIndex; i < argumentCount; i++) {
     bool isValidFlag = isFlag(argumentList[i]) || isLongFlag(argumentList[i]);
 
-    if (!isValidFlag) {
+    if (!isValidFlag && !endsWithTar(argumentList[i])) {
       files[*fileCount] = argumentList[i];
       (*fileCount)++;
     }
