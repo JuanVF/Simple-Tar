@@ -55,14 +55,14 @@ int create(char *input_files[], int num_files, char *output_file) {
     file_size = ftell(input);
     fseek(input, 0, SEEK_SET);
 
-    snprintf(message, 100, "file [%s], size [%ld bytes]", input_files[i],
-             file_size);
+    snprintf(message, 100, "file [%s], size [%ld bytes]",
+             get_filename(input_files[i]), file_size);
     logVerbose(message);
 
     // Crear el encabezado para el archivo
     struct posix_header header;
     memset(&header, 0, sizeof(header));
-    strncpy(header.name, input_files[i], 100);
+    strncpy(header.name, get_filename(input_files[i]), 100);
     snprintf(header.mode, 8, "%07o", 0644); // Modo de archivo: rw-r--r--
     snprintf(header.size, 12, "%011lo",
              (unsigned long)file_size);      // Tamaño del archivo en octal
@@ -105,6 +105,49 @@ int extract(char *files[], int fileCount, char *filename) {
   snprintf(message, 100, "starting to extract %s", filename);
   logVerbose(message);
 
+  FILE *tar = fopen(filename, "rb");
+  if (!tar) {
+    logError("could not open tar file");
+    return 1;
+  }
+
+  struct posix_header header;
+  while (fread(&header, sizeof(header), 1, tar) == 1) {
+    if (header.name[0] == '\0') {
+      break; // Reached the end of the archive
+    }
+
+    size_t size = octal_to_size_t(header.size);
+
+    // Open the output file
+    FILE *outfile = fopen(header.name, "wb");
+    if (!outfile) {
+      snprintf(message, 100, "could not create file %s", header.name);
+      logError(message);
+      fclose(tar);
+      return 1;
+    }
+
+    // Read and write file contents
+    char buffer[BLOCK_SIZE];
+    size_t bytes_to_read;
+    for (size_t total_read = 0; total_read < size;
+         total_read += bytes_to_read) {
+      bytes_to_read = fread(
+          buffer, 1,
+          (size - total_read) < BLOCK_SIZE ? (size - total_read) : BLOCK_SIZE,
+          tar);
+      fwrite(buffer, 1, bytes_to_read, outfile);
+    }
+
+    fclose(outfile);
+
+    // Skip to the next header block if necessary
+    size_t file_blocks = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    fseek(tar, file_blocks * BLOCK_SIZE - size, SEEK_CUR);
+  }
+
+  fclose(tar);
   return 0;
 }
 
@@ -244,4 +287,12 @@ size_t octal_to_size_t(char *octal) {
   size_t size = 0;
   sscanf(octal, "%zo", &size);
   return size;
+}
+
+const char *get_filename(const char *path) {
+  const char *last_slash = strrchr(path, '/');
+  if (last_slash) {
+    return last_slash + 1; // move past the '/' character
+  }
+  return path; // no '/' found, return the original path
 }

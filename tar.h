@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 size_t octal_to_size_t(char *octal);
+const char *get_filename(const char *path);
 
 int displayHelp();
 int create(char *files[], int fileCount, char *filename);
