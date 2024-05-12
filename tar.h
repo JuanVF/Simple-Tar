@@ -5,6 +5,7 @@
 
 size_t octal_to_size_t(char *octal);
 const char *get_filename(const char *path);
+void size_t_to_octal(char *buffer, size_t value);
 
 int displayHelp();
 int create(char *files[], int fileCount, char *filename);
