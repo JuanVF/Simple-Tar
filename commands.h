@@ -20,6 +20,7 @@ typedef enum {
 } Flags;
 
 int handleCommands(int argumentCount, char *argumentList[]);
+
 int callCommands(Flags command, char *files[], int fileCount, char *filename);
 
 Flags getFromSimpleFlag(char *flag);

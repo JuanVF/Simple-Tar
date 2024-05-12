@@ -26,7 +26,19 @@ struct block_data {
   char data[BLOCK_SIZE - 12 * 2];
 };
 
-// create will add files to a new tar file
+/**
+ * ------------------------------------------
+ *          CREATE COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will add files to a new tar file
+ * @parameter: (input_files) the input files to be added to a tar file
+ * @parameter: (num_files) the amount of input files received
+ * @parameter: (output_file) the tar file received
+ * @output: the exit code error
+ */
 int create(char *input_files[], int num_files, char *output_file) {
   char message[100];
 
@@ -52,11 +64,36 @@ int create(char *input_files[], int num_files, char *output_file) {
 
   // Creates the File Header
   struct posix_header *file_header = malloc(sizeof(struct posix_header));
+
   if (!file_header) {
     logError("memory allocation failed");
     return 1;
   }
   memset(file_header, 0, sizeof(struct posix_header));
+
+  createHeader(file_header, num_files, input_files);
+
+  fwrite(file_header, MAX_HEADER_SIZE, 1, output);
+
+  // Now it will create the blocks for each file
+  int result = createFATBlocks(file_header, output, num_files, input_files);
+
+  free(file_header);
+  fclose(output);
+
+  return result;
+}
+
+/**
+ * @description: creates the header for the tar file using FAT table
+ * @parameter: (file_header) the header or FAT table to be set.
+ * @parameter: (num_files) the amount of input files received
+ * @parameter: (input_files) the files to be written.
+ * @output: n/a
+ */
+void createHeader(struct posix_header *file_header, int num_files,
+                  char *input_files[]) {
+  char message[100];
 
   // pre-calc of the block to be placed
   int blocksCreated = 0;
@@ -76,6 +113,7 @@ int create(char *input_files[], int num_files, char *output_file) {
     struct posix_file_info file_info;
 
     snprintf(file_info.filename, sizeof(file_info.filename), "%s", filename);
+
     // size is stored in octal
     snprintf(file_info.size, 12, "%011lo", (unsigned long)file_size);
     snprintf(file_info.blockAddress, 12, "%011lo",
@@ -90,11 +128,21 @@ int create(char *input_files[], int num_files, char *output_file) {
 
     fclose(input);
   }
+}
 
-  fwrite(file_header, MAX_HEADER_SIZE, 1, output);
-
-  // Now it will create the blocks for each file
-  blocksCreated = 0;
+/**
+ * @description: create the FAT Blocks for the tar file
+ * @parameter: (file_header) the header or FAT table to be used.
+ * @parameter: (output) the tar FILE to be written.
+ * @parameter: (input_files) the files to be written.
+ * @parameter: (num_files) the amount of input files received
+ * @parameter: (input_files) the files to be written.
+ * @output: n/a
+ */
+int createFATBlocks(struct posix_header *file_header, FILE *output,
+                    int num_files, char *input_files[]) {
+  char message[100];
+  int blocksCreated = 0;
 
   for (int i = 0; i < num_files; i++) {
     struct posix_file_info fileInfo = file_header->files[i];
@@ -151,13 +199,20 @@ int create(char *input_files[], int num_files, char *output_file) {
     fclose(inputFile);
   }
 
-  free(file_header);
-  fclose(output);
-
   return 0;
 }
 
-// extract will extract the files in the current directory
+/**
+ * ------------------------------------------
+ *          EXTRACT COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will extract the files in the current directory
+ * @parameter: (filename) the file to be used to extract.
+ * @output: the exit code.
+ */
 int extract(char *filename) {
   char message[100];
   FILE *archive = fopen(filename, "rb");
@@ -182,76 +237,123 @@ int extract(char *filename) {
     return 1;
   }
 
-  for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
-    struct posix_file_info fileInfo = header->files[i];
-
-    size_t fileSize = octal_to_size_t(fileInfo.size);
-    size_t filePosition = octal_to_size_t(fileInfo.blockAddress);
-
-    FILE *outputFile = fopen(fileInfo.filename, "wb");
-    if (!outputFile) {
-      snprintf(message, sizeof(message), "Failed to create file %s",
-               fileInfo.filename);
-      logError(message);
-      continue; // Continue with next files
-    }
-
-    snprintf(message, sizeof(message), "starting to create %s",
-             header->files[i].filename);
-    logVerbose(message);
-
-    size_t currentBlockIndex = filePosition;
-    size_t totalBytesWritten = 0;
-
-    while (totalBytesWritten < fileSize) {
-      snprintf(message, sizeof(message), "reading block #%d",
-               currentBlockIndex);
-      logVerbose(message);
-
-      // Seek to the current block in the archive file
-      fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE,
-            SEEK_SET);
-
-      struct block_data block;
-
-      if (fread(&block, BLOCK_SIZE, 1, archive) != 1) {
-        logError("Failed to read block data.");
-        break;
-      }
-
-      // Calculate the size of data to write to the output file
-      size_t writeSize = BLOCK_SIZE - 12 * 2;
-      size_t remainingSize = fileSize - totalBytesWritten;
-
-      // Adjust write size for the last portion of data
-      if (writeSize > remainingSize) {
-        writeSize = remainingSize;
-      }
-
-      fwrite(block.data, 1, writeSize, outputFile);
-      totalBytesWritten += writeSize;
-
-      // Convert the next block index from octal to size_t
-      size_t nextBlockIndex = octal_to_size_t(block.next);
-
-      if (nextBlockIndex == 0) {
-        break;
-      }
-      currentBlockIndex = nextBlockIndex;
-    }
-
-    fclose(outputFile);
-  }
+  extractFilesByTarFile(header, archive);
 
   free(header);
   fclose(archive);
   return 0;
 }
 
-// list will list all the filenames
+/**
+ * @description: extract all the files out of a tar file
+ * @parameter: (header) the FAT header of the tar file
+ * @parameter: (archive) the tar file to be read.
+ * @output: n/a
+ */
+void extractFilesByTarFile(struct posix_header *header, FILE *archive) {
+  char message[100];
+
+  for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
+    struct posix_file_info fileInfo = header->files[i];
+
+    extractFileByTarFile(archive, &fileInfo);
+  }
+}
+
+/**
+ * @description: extracts a single file from the tar file
+ * @parameter: (header) the FAT header of the tar file
+ * @parameter: (archive) the tar file to be read.
+ * @parameter: (fileInfo) the info of the specific file to be extracted
+ * @output: n/a
+ */
+void extractFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
+
+  char message[100];
+
+  size_t fileSize = octal_to_size_t(fileInfo->size);
+  size_t filePosition = octal_to_size_t(fileInfo->blockAddress);
+
+  FILE *outputFile = fopen(fileInfo->filename, "wb");
+
+  if (!outputFile) {
+    snprintf(message, sizeof(message), "Failed to create file %s",
+             fileInfo->filename);
+    logError(message);
+    return; // Continue with next files
+  }
+
+  snprintf(message, sizeof(message), "starting to create %s",
+           fileInfo->filename);
+  logVerbose(message);
+
+  size_t currentBlockIndex = filePosition;
+  size_t totalBytesWritten = 0;
+
+  while (totalBytesWritten < fileSize) {
+    snprintf(message, sizeof(message), "reading block #%d", currentBlockIndex);
+    logVerbose(message);
+
+    // Seek to the current block in the archive file
+    fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE, SEEK_SET);
+
+    struct block_data block;
+
+    if (fread(&block, BLOCK_SIZE, 1, archive) != 1) {
+      logError("Failed to read block data.");
+      break;
+    }
+
+    // Calculate the size of data to write to the output file
+    size_t writeSize = BLOCK_SIZE - 12 * 2;
+    size_t remainingSize = fileSize - totalBytesWritten;
+
+    // Adjust write size for the last portion of data
+    if (writeSize > remainingSize) {
+      writeSize = remainingSize;
+    }
+
+    fwrite(block.data, 1, writeSize, outputFile);
+    totalBytesWritten += writeSize;
+
+    // Convert the next block index from octal to size_t
+    size_t nextBlockIndex = octal_to_size_t(block.next);
+
+    if (nextBlockIndex == 0) {
+      break;
+    }
+    currentBlockIndex = nextBlockIndex;
+  }
+
+  fclose(outputFile);
+}
+
+/**
+ * ------------------------------------------
+ *          LIST COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will list all the filenames
+ * @parameter: (filename) the tar filename to be listed
+ * @output: the exit code
+ */
 int list(char *filename) { return 0; }
 
-// delete will remove certain files from the tar file
+/**
+ * ------------------------------------------
+ *          DELETE COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will remove certain files from the tar file
+ * @parameter: (files) the files name to be deleted
+ * @parameter: (fileCount) the amount of files to be deleted
+ * @parameter: (filename) the tar filename to be listed
+ * @output: the exit code
+ */
 int delete(char *files[], int fileCount, char *filename) {
   char message[100];
   snprintf(message, 100, "starting to delete archives inside %s", filename);
@@ -260,7 +362,19 @@ int delete(char *files[], int fileCount, char *filename) {
   return 0;
 }
 
-// update will updates the content of an archive
+/**
+ * ------------------------------------------
+ *          UPDATE COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will update the content of n archives
+ * @parameter: (files) the files name to be deleted
+ * @parameter: (fileCount) the amount of files to be deleted
+ * @parameter: (filename) the tar filename to be listed
+ * @output: the exit code
+ */
 int update(char *files[], int fileCount, char *filename) {
   char message[100];
   snprintf(message, 100, "Starting to update archives inside %s", filename);
@@ -274,6 +388,7 @@ int update(char *files[], int fileCount, char *filename) {
   }
 
   struct posix_header *header = malloc(sizeof(struct posix_header));
+
   if (!header) {
     logError("Memory allocation for header failed.");
     fclose(archive);
@@ -287,8 +402,32 @@ int update(char *files[], int fileCount, char *filename) {
     return 1;
   }
 
+  updateBlocksInFile(files, fileCount, header, archive);
+
+  // Rewrite the header if any changes
+  fseek(archive, 0, SEEK_SET);
+  fwrite(header, MAX_HEADER_SIZE, 1, archive);
+
+  free(header);
+  fclose(archive);
+  return 0;
+}
+
+/**
+ * @description: will update the blocks with the new files information
+ * @parameter: (files) the files name to be updated
+ * @parameter: (fileCount) the amount of files to be deleted
+ * @parameter: (header) the FAT Header to be used
+ * @parameter: (archive) the tar FILE
+ * @output: n/a
+ */
+void updateBlocksInFile(char *files[], int fileCount,
+                        struct posix_header *header, FILE *archive) {
+  char message[100];
+
   for (int i = 0; i < fileCount; i++) {
     FILE *inputFile = fopen(files[i], "rb");
+
     if (!inputFile) {
       snprintf(message, 100,
                "Error reading file %s, continuing with other files.", files[i]);
@@ -302,195 +441,268 @@ int update(char *files[], int fileCount, char *filename) {
     size_t newNumBlocks =
         (newFileSize + BLOCK_SIZE - 24 - 1) / (BLOCK_SIZE - 24);
 
-    bool isFileInArchive = false;
-    int fileIndex = -1;
+    int fileIndex;
+    bool isFileInArchive = isFileInFATTable(header, files[i], &fileIndex);
 
-    // Search for the file in the archive
-    for (int j = 0; j < MAX_FILES && strlen(header->files[j].filename) > 0;
-         j++) {
-      if (strcmp(header->files[j].filename, get_filename(files[i])) == 0) {
-        isFileInArchive = true;
-        fileIndex = j;
+    if (!isFileInArchive) {
+      logError("file not in archive... continuing...");
 
-        snprintf(message, 100,
-                 "file %s exists in header will continue to update",
-                 get_filename(files[i]));
-        logVerbose(message);
-        break;
-      }
+      fclose(inputFile);
+
+      continue;
     }
 
-    if (isFileInArchive) {
-      size_t existingBlocks = (octal_to_size_t(header->files[fileIndex].size) +
-                               BLOCK_SIZE - 24 - 1) /
-                              (BLOCK_SIZE - 24);
+    size_t existingBlocks =
+        (octal_to_size_t(header->files[fileIndex].size) + BLOCK_SIZE - 24 - 1) /
+        (BLOCK_SIZE - 24);
 
-      snprintf(message, 100, "file %s has %d blocks",
-               header->files[fileIndex].filename, existingBlocks);
-      logVerbose(message);
+    snprintf(message, 100,
+             "file %s has %d blocks and will require now %d blocks.",
+             header->files[fileIndex].filename, existingBlocks, newNumBlocks);
+    logVerbose(message);
 
-      snprintf(message, 100, "file %s will require now %d blocks",
-               get_filename(files[i]), newNumBlocks);
-      logVerbose(message);
+    size_t currentBlockIndex =
+        octal_to_size_t(header->files[fileIndex].blockAddress);
 
-      size_t currentBlockIndex =
-          octal_to_size_t(header->files[fileIndex].blockAddress);
+    if (existingBlocks >= newNumBlocks) {
+      // Update existing blocks
+      size_t blockCount = 0;
 
-      if (existingBlocks >= newNumBlocks) {
-        // Update existing blocks
-        size_t blockCount = 0;
+      overwriteExistingBlocks(header->files[fileIndex].filename,
+                              &currentBlockIndex, &blockCount, &newNumBlocks,
+                              archive, inputFile);
 
-        while (blockCount < newNumBlocks) {
-          snprintf(message, 100, "reading block #%d for file ",
-                   currentBlockIndex, header->files[fileIndex].filename);
-          logVerbose(message);
-
-          fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE,
-                SEEK_SET);
-          struct block_data block;
-          fread(&block, sizeof(struct block_data), 1, archive);
-
-          fread(block.data, 1, BLOCK_SIZE - 24, inputFile);
-          fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE,
-                SEEK_SET);
-          fwrite(&block, sizeof(struct block_data), 1, archive);
-
-          size_t nextBlockIndex = octal_to_size_t(block.next);
-          if (nextBlockIndex == 0 || ++blockCount >= newNumBlocks)
-            break;
-          currentBlockIndex = nextBlockIndex;
-        }
-
-        // If the file is smaller, mark remaining blocks as free
-        if (existingBlocks > newNumBlocks) {
-          struct block_data block;
-          while (currentBlockIndex != 0) {
-            fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE,
-                  SEEK_SET);
-            fread(&block, sizeof(struct block_data), 1, archive);
-            size_t_to_octal(block.isFree, 1); // Mark block as free
-            fwrite(&block, sizeof(struct block_data), 1,
-                   archive); // Update block
-
-            currentBlockIndex =
-                octal_to_size_t(block.next); // Move to the next block
-          }
-        }
-      } else {
-        // File is bigger, need to add new blocks
-        size_t blockCount = 0;
-        size_t lastBlockIndex = 0;
-
-        // Read until the end of currently allocated blocks
-        while (blockCount < existingBlocks) {
-          snprintf(message, 100, "reading block #%d for file ",
-                   currentBlockIndex, header->files[fileIndex].filename);
-          logVerbose(message);
-
-          fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE,
-                SEEK_SET);
-          struct block_data block;
-
-          fread(&block, BLOCK_SIZE, 1, archive);
-          fread(block.data, 1, BLOCK_SIZE - 24, inputFile);
-          fseek(archive, MAX_HEADER_SIZE + currentBlockIndex * BLOCK_SIZE,
-                SEEK_SET);
-          fwrite(&block, BLOCK_SIZE, 1, archive);
-
-          lastBlockIndex = currentBlockIndex; // Track the last used block
-
-          size_t nextBlockIndex = octal_to_size_t(block.next);
-
-          bool hitTheLastBlock =
-              nextBlockIndex == 0 || ++blockCount >= existingBlocks;
-
-          if (hitTheLastBlock) {
-            break;
-          }
-
-          currentBlockIndex = nextBlockIndex;
-        }
-
-        snprintf(message, 100, "starting to add new blocks for file %s",
-                 header->files[fileIndex].filename);
-        logVerbose(message);
-
-        fseek(archive, 0, SEEK_END);
-
-        // This is where new blocks will start
-        size_t appendPosition = ftell(archive);
-        struct block_data newBlock;
-
-        size_t firstPosition =
-            (appendPosition - (MAX_HEADER_SIZE)) / (BLOCK_SIZE);
-
-        for (; blockCount < newNumBlocks; blockCount++) {
-          size_t pos = (appendPosition - (MAX_HEADER_SIZE)) / (BLOCK_SIZE);
-
-          memset(&newBlock, 0, sizeof(newBlock));
-
-          // Read file content into block
-          size_t readSize = fread(newBlock.data, 1, BLOCK_SIZE - 24, inputFile);
-
-          if (blockCount < newNumBlocks - 1) {
-            size_t_to_octal(newBlock.next, pos + +1);
-          } else {
-            size_t_to_octal(newBlock.next, 0);
-          }
-
-          snprintf(message, 100,
-                   "new block for %s is at block #%zu and its next will be #%d",
-                   header->files[fileIndex].filename, pos,
-                   octal_to_size_t(newBlock.next));
-          logVerbose(message);
-
-          fwrite(&newBlock, BLOCK_SIZE, 1, archive);
-          appendPosition += BLOCK_SIZE;
-        }
-
-        appendPosition = ftell(archive);
-
-        // Update the last old block's next index to point to the first new
-        // block
-        if (existingBlocks > 0) {
-          fseek(archive, MAX_HEADER_SIZE + lastBlockIndex * BLOCK_SIZE,
-                SEEK_SET);
-
-          struct block_data lastBlock;
-
-          fread(&lastBlock, BLOCK_SIZE, 1, archive);
-
-          snprintf(message, 100, "new next in %s at block #%zu will be %d",
-                   header->files[fileIndex].filename, lastBlockIndex,
-                   firstPosition);
-          logVerbose(message);
-
-          size_t_to_octal(lastBlock.next, firstPosition);
-          fseek(archive, MAX_HEADER_SIZE + lastBlockIndex * BLOCK_SIZE,
-                SEEK_SET);
-          fwrite(&lastBlock, BLOCK_SIZE, 1, archive);
-        }
-
-        // Update file info in the header
-        size_t_to_octal(header->files[fileIndex].size, newFileSize);
+      // If the file is smaller, mark remaining blocks as free
+      if (existingBlocks > newNumBlocks) {
+        markRemainingBlocksAsFree(&currentBlockIndex, archive);
       }
     } else {
-      logError("file not in archive... continuing...");
+      updateWhenFileSizeIsGreater(header->files[fileIndex].filename,
+                                  existingBlocks, currentBlockIndex,
+                                  newNumBlocks, archive, inputFile);
+
+      // Update file info in the header
+      size_t_to_octal(header->files[fileIndex].size, newFileSize);
     }
 
     fclose(inputFile);
   }
-
-  // Rewrite the header if any changes
-  fseek(archive, 0, SEEK_SET);
-  fwrite(header, MAX_HEADER_SIZE, 1, archive);
-
-  free(header);
-  fclose(archive);
-  return 0;
 }
 
-// append will add new archives
+/**
+ * @description: will determine if a certain file is present in the FAT table
+ * @parameter: (header) the FAT Header to be used
+ * @parameter: (path) the filename with its path to look for
+ * @parameter: (indexPosition) the position where the file is. This will be set
+ * in the function.
+ * @output: true if the file exists in the header
+ */
+bool isFileInFATTable(struct posix_header *header, char *path,
+                      int *indexPosition) {
+  char message[100];
+  (*indexPosition) = -1;
+
+  for (int j = 0; j < MAX_FILES && strlen(header->files[j].filename) > 0; j++) {
+    if (strcmp(header->files[j].filename, get_filename(path)) == 0) {
+
+      (*indexPosition) = j;
+
+      snprintf(message, 100, "file %s exists in header will continue to update",
+               get_filename(path));
+      logVerbose(message);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * @description: will overwrite the exiting blocks of a file inside the tar file
+ * @parameter: (filename) the filename of the file to overwrite
+ * @parameter: (currentBlockIndex) the block address where the file starts
+ * @parameter: (blockCount) the amount of blocks used. This will be set in the
+ * function
+ * @parameter: (newNumBlocks) the new amount of blocks required.
+ * @parameter: (archive) the tar FILE
+ * @parameter: (inputFile) the new file to be packaged
+ * @output: n/a
+ */
+void overwriteExistingBlocks(char *filename, size_t *currentBlockIndex,
+                             size_t *blockCount, size_t *newNumBlocks,
+                             FILE *archive, FILE *inputFile) {
+  char message[100];
+
+  while ((*blockCount) < (*newNumBlocks)) {
+    snprintf(message, 100, "reading block #%d for file ", *currentBlockIndex,
+             filename);
+    logVerbose(message);
+
+    fseek(archive, MAX_HEADER_SIZE + (*currentBlockIndex) * BLOCK_SIZE,
+          SEEK_SET);
+    struct block_data block;
+    fread(&block, sizeof(struct block_data), 1, archive);
+
+    fread(block.data, 1, BLOCK_SIZE - 24, inputFile);
+    fseek(archive, MAX_HEADER_SIZE + (*currentBlockIndex) * BLOCK_SIZE,
+          SEEK_SET);
+    fwrite(&block, sizeof(struct block_data), 1, archive);
+
+    size_t nextBlockIndex = octal_to_size_t(block.next);
+
+    if (nextBlockIndex == 0 || ++(*blockCount) >= (*newNumBlocks)) {
+      break;
+    }
+
+    (*currentBlockIndex) = nextBlockIndex;
+  }
+}
+
+/**
+ * @description: will set the rest of the blocks as free
+ * @parameter: (currentBlockIndex) the block address where the file starts
+ * @parameter: (archive) the tar FILE
+ * @output: n/a
+ */
+void markRemainingBlocksAsFree(size_t *currentBlockIndex, FILE *archive) {
+  struct block_data block;
+
+  while ((*currentBlockIndex) != 0) {
+    fseek(archive, MAX_HEADER_SIZE + (*currentBlockIndex) * BLOCK_SIZE,
+          SEEK_SET);
+    fread(&block, sizeof(struct block_data), 1, archive);
+    size_t_to_octal(block.isFree, 1); // Mark block as free
+    fwrite(&block, sizeof(struct block_data), 1,
+           archive); // Update block
+
+    (*currentBlockIndex) =
+        octal_to_size_t(block.next); // Move to the next block
+  }
+}
+
+/**
+ * @description: will update the blocks when file size is bigger. This requires
+ * to find free blocks or allocate new blocks in the file.
+ * @parameter: (filename) the name of the file updating
+ * @parameter: (existingBlocks) the amount of current existing blocks
+ * @parameter: (currentBlockIndex) the current block position of the file
+ * @parameter: (newNumBlocks) the new amount of blocks required
+ * @parameter: (archive) the tar FILE
+ * @parameter: (inputFile) the new FILE
+ * @output: n/a
+ */
+void updateWhenFileSizeIsGreater(char *filename, size_t existingBlocks,
+                                 size_t currentBlockIndex, size_t newNumBlocks,
+                                 FILE *archive, FILE *inputFile) {
+  char message[100];
+
+  size_t blockCount = 0;
+  size_t lastBlockIndex = 0;
+
+  overwriteExistingBlocks(filename, &currentBlockIndex, &blockCount,
+                          &newNumBlocks, archive, inputFile);
+
+  snprintf(message, 100, "starting to add new blocks for file %s", filename);
+  logVerbose(message);
+
+  fseek(archive, 0, SEEK_END);
+
+  // This is where new blocks will start
+  size_t appendPosition = ftell(archive);
+
+  size_t firstPosition = (appendPosition - (MAX_HEADER_SIZE)) / (BLOCK_SIZE);
+
+  updateAtNewBlocks(blockCount, newNumBlocks, &appendPosition, inputFile,
+                    archive, filename);
+
+  appendPosition = ftell(archive);
+
+  if (existingBlocks > 0) {
+    linkUpdatedBlocks(lastBlockIndex, firstPosition, archive, filename);
+  }
+}
+
+/**
+ * @description: will add new blocks for the updated file
+ * @parameter: (blockCount) the counter for blocks
+ * @parameter: (newNumBlocks) the new amount of blocks required
+ * @parameter: (appendPosition) the current block position. This will be set in
+ * the function.
+ * @parameter: (inputFile) the new FILE
+ * @parameter: (archive) the tar FILE
+ * @parameter: (filename) the name of the updated file
+ * @output: n/a
+ */
+void updateAtNewBlocks(size_t blockCount, size_t newNumBlocks,
+                       size_t *appendPosition, FILE *inputFile, FILE *archive,
+                       char *filename) {
+  char message[100];
+  struct block_data newBlock;
+
+  for (; blockCount < newNumBlocks; blockCount++) {
+    size_t pos = ((*appendPosition) - (MAX_HEADER_SIZE)) / (BLOCK_SIZE);
+
+    memset(&newBlock, 0, sizeof(newBlock));
+
+    // Read file content into block
+    size_t readSize = fread(newBlock.data, 1, BLOCK_SIZE - 24, inputFile);
+
+    if (blockCount < newNumBlocks - 1) {
+      size_t_to_octal(newBlock.next, pos + +1);
+    } else {
+      size_t_to_octal(newBlock.next, 0);
+    }
+
+    snprintf(message, 100,
+             "new block for %s is at block #%zu and its next will be #%d",
+             filename, pos, octal_to_size_t(newBlock.next));
+    logVerbose(message);
+
+    fwrite(&newBlock, BLOCK_SIZE, 1, archive);
+    (*appendPosition) += BLOCK_SIZE;
+  }
+}
+
+/**
+ * @description: will link the old blocks with the new ones
+ * @parameter: (lastBlockIndex) the last block position
+ * @parameter: (firstPosition) the first position of the new block added
+ * @parameter: (archive) the tar FILE
+ * @parameter: (filename) the name of the updated file
+ * @output: n/a
+ */
+void linkUpdatedBlocks(size_t lastBlockIndex, size_t firstPosition,
+                       FILE *archive, char *filename) {
+  char message[100];
+
+  fseek(archive, MAX_HEADER_SIZE + lastBlockIndex * BLOCK_SIZE, SEEK_SET);
+
+  struct block_data lastBlock;
+
+  fread(&lastBlock, BLOCK_SIZE, 1, archive);
+
+  snprintf(message, 100, "new next in %s at block #%zu will be %d", filename,
+           lastBlockIndex, firstPosition);
+  logVerbose(message);
+
+  size_t_to_octal(lastBlock.next, firstPosition);
+  fseek(archive, MAX_HEADER_SIZE + lastBlockIndex * BLOCK_SIZE, SEEK_SET);
+  fwrite(&lastBlock, BLOCK_SIZE, 1, archive);
+}
+
+/**
+ * ------------------------------------------
+ *          APPEND COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will add n new archives to the tar file
+ * @parameter: (files) the files name to be deleted
+ * @parameter: (fileCount) the amount of files to be deleted
+ * @parameter: (filename) the tar filename to be listed
+ * @output: the exit code
+ */
 int append(char *files[], int fileCount, char *filename) {
   char message[100];
   snprintf(message, 100, "starting to add new archives inside %s", filename);
@@ -499,7 +711,17 @@ int append(char *files[], int fileCount, char *filename) {
   return 0;
 }
 
-// pack desfragment using FAT
+/**
+ * ------------------------------------------
+ *          PACK COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will desfragment the tar file to free unused space
+ * @parameter: (filename) the tar filename to be listed
+ * @output: the exit code
+ */
 int pack(char *filename) {
   char message[100];
   snprintf(message, 100, "starting to desfragment %s", filename);
@@ -507,7 +729,16 @@ int pack(char *filename) {
   return 0;
 }
 
-// displayHelp will display all the required help
+/**
+ * ------------------------------------------
+ *          HELP COMMAND
+ * ------------------------------------------
+ */
+
+/**
+ * @description: will print useful information for each command of this program
+ * @output: the exit code
+ */
 int displayHelp() {
   // To prevent bad memory practices we need to free all these variables
 
@@ -567,12 +798,28 @@ int displayHelp() {
   return 0;
 }
 
+/**
+ * ------------------------------------------
+ *          UTILITIES FUNCTIONS
+ * ------------------------------------------
+ */
+
+/**
+ * @description: out of a string octal it will return the number
+ * @parameter: (octal) octal number in string format
+ * @output: octal in number
+ */
 size_t octal_to_size_t(char *octal) {
   size_t size = 0;
   sscanf(octal, "%zo", &size);
   return size;
 }
 
+/**
+ * @description: removes the path directory out of a path to get the filename
+ * @parameter: (path) the full path
+ * @output: the filename
+ */
 const char *get_filename(const char *path) {
   const char *last_slash = strrchr(path, '/');
   if (last_slash) {
@@ -581,6 +828,12 @@ const char *get_filename(const char *path) {
   return path; // no '/' found, return the original path
 }
 
+/**
+ * @description: creates an octal string out of a number
+ * @parameter: (buffer) the string to be set
+ * @parameter: (value) the numeric value
+ * @output: n/a
+ */
 void size_t_to_octal(char *buffer, size_t value) {
   snprintf(buffer, 12, "%011lo", value);
 }

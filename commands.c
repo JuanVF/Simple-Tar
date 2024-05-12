@@ -6,7 +6,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-// handleCommands is the entry point to handle all commands
+/**
+ * @description: is the entry point to handle all commands
+ * @parameter: (argumentCount) amount of command line arguments received
+ * @parameter: (argumentList) the list of the arguments received
+ * @output: exit code of the program
+ */
 int handleCommands(int argumentCount, char *argumentList[]) {
   if (argumentCount <= 1) {
     displayHelp();
@@ -112,7 +117,15 @@ int handleCommands(int argumentCount, char *argumentList[]) {
   return callCommands(selectedMode, files, filesCount, filename);
 }
 
-// callCommands decide which command to send
+/**
+ * @description: decide which command to send
+ * @parameter: (command) the command to be executed
+ * @parameter: (files) the files passed as parameter to the program
+ * @parameter: (fileCount) the amount of files passed as parameter to the
+ * program
+ * @parameter: (filename) the tar filename to be written or read
+ * @output: exit code of the program
+ */
 int callCommands(Flags command, char *files[], int fileCount, char *filename) {
   if (command == HELP) {
     return displayHelp();
@@ -142,7 +155,13 @@ int callCommands(Flags command, char *files[], int fileCount, char *filename) {
   return 0;
 }
 
-// determineFlag determines which long flag is using
+/**
+ * @description: determines which flag is received
+ * @parameter: (flag) the string flag, either in its long version or short
+ * version line
+ * @parameter: (argumentList) the arguments received from command line
+ * @output: the flag enum to be used
+ */
 Flags determineFlag(char *flag) {
   if (strcmp(flag, "--create") == 0 || flag[0] == 'c') {
     return CREATE;
@@ -187,7 +206,13 @@ Flags determineFlag(char *flag) {
   return UNKNOWN;
 }
 
-// getOutFilename retrives the filename to be used
+/**
+ * @description: retrives the filename to be used
+ * @parameter: (argumentCount) the amount of arguments received from command
+ * line
+ * @parameter: (argumentList) the arguments received from command line
+ * @output: the tar filename
+ */
 char *getOutFilename(int argumentCount, char *argumentList[]) {
   // Iterate over all arguments
   for (int i = 1; i < argumentCount; i++) {
@@ -202,7 +227,15 @@ char *getOutFilename(int argumentCount, char *argumentList[]) {
   return NULL;
 }
 
-// getFlags return all the flags that the user passed as parameter
+/**
+ * @description: set all the flags that the user passed as parameter
+ * @parameter: (argumentCount) the amount of arguments received from command
+ * line
+ * @parameter: (argumentList) the arguments received from command line
+ * @parameter: (flagCount) a pointer to set the flag count found
+ * @parameter: (flags) a pointer to set the flags found
+ * @output: n/a
+ */
 void getFlags(int argumentCount, char *argumentList[], int *flagCount,
               char *flags[]) {
   *flagCount = 0;
@@ -217,7 +250,15 @@ void getFlags(int argumentCount, char *argumentList[], int *flagCount,
   }
 }
 
-// getFiles return all the files that are necessary for the command
+/**
+ * @description: set all the files that are necessary for the command
+ * @parameter: (argumentCount) the amount of arguments received from command
+ * line
+ * @parameter: (argumentList) the arguments received from command line
+ * @parameter: (fileCount) a pointer to set the files count found
+ * @parameter: (files) a pointer to set the files found
+ * @output: n/a
+ */
 void getFiles(int argumentCount, char *argumentList[], int *fileCount,
               char *files[]) {
   *fileCount = 0;
@@ -239,15 +280,27 @@ void getFiles(int argumentCount, char *argumentList[], int *fileCount,
   }
 }
 
-// isFlag determines if it is a single flag
+/**
+ * @description: determines if it is a single flag
+ * @parameter: (flag) the string flag
+ * @output: true if it is a short flag
+ */
 bool isFlag(char *flag) { return flag[0] == '-' && flag[1] != '-'; }
 
-// isLongFlag determines if it is a long flag
+/**
+ * @description: determines if it is a long flag
+ * @parameter: (flag) the string flag
+ * @output: true if it is a long flag
+ */
 bool isLongFlag(char *flag) {
   return strlen(flag) > 1 && flag[0] == '-' && flag[1] == '-';
 }
 
-// Function to check if the argument ends with ".tar"
+/**
+ * @description: determines if a filename in string format is a tar file
+ * @parameter: (filename) the string filename
+ * @output: true if it ends with .tar extension
+ */
 bool endsWithTar(const char *filename) {
   const char *tarSuffix = ".tar";
   size_t lenSuffix = strlen(tarSuffix);
