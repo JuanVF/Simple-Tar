@@ -71,4 +71,7 @@ void updateAtNewBlocks(size_t blockCount, size_t newNumBlocks,
 // will link the old blocks with the new ones
 void linkUpdatedBlocks(size_t lastBlockIndex, size_t firstPosition,
                        FILE *archive, char *filename);
+
+// will go to the end of file and remove last unused blocks
+int removeFreeBlocksAtEnd(FILE *archive, struct posix_header *header);
 #endif

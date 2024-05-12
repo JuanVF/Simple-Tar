@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define MAX_HEADER_SIZE 1024 * 1024 * 2 // Header Size of 2MB
 #define BLOCK_SIZE 1024 * 256           // 256 KB Block Size
@@ -724,8 +726,192 @@ int append(char *files[], int fileCount, char *filename) {
  */
 int pack(char *filename) {
   char message[100];
-  snprintf(message, 100, "starting to desfragment %s", filename);
+  snprintf(message, 100, "starting to desfragment the tar file %s", filename);
   logVerbose(message);
+
+  FILE *archive = fopen(filename, "r+b");
+
+  if (archive == NULL) {
+    snprintf(message, 100, "error opening the tar file. %s", filename);
+    logError(message);
+    return 1;
+  }
+
+  struct posix_header *header = malloc(sizeof(struct posix_header));
+
+  if (!header) {
+    logError("memory allocation for header failed.");
+    fclose(archive);
+    return 1;
+  }
+
+  if (fread(header, MAX_HEADER_SIZE, 1, archive) != 1) {
+    logError("failed to read header.");
+    free(header);
+    fclose(archive);
+    return 1;
+  }
+
+  // Check and remove free blocks at the end of the file
+  if (removeFreeBlocksAtEnd(archive, header) != 0) {
+    free(header);
+    fclose(archive);
+    return 1;
+  }
+
+  size_t endPos = ftell(archive);
+
+  for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
+    snprintf(message, 100, "reading info of file %s",
+             header->files[i].filename);
+    logVerbose(message);
+
+    // Determine the first free block and save its position
+    long firstFreeBlockPosition = -1;
+    long currentPos = MAX_HEADER_SIZE;
+
+    while (currentPos < endPos) {
+      struct block_data block;
+
+      fseek(archive, currentPos, SEEK_SET);
+      fread(&block, BLOCK_SIZE, 1, archive);
+
+      if (octal_to_size_t(block.isFree) == 1) {
+        firstFreeBlockPosition = currentPos;
+        break;
+      }
+
+      currentPos += BLOCK_SIZE;
+    }
+
+    if (firstFreeBlockPosition == -1) {
+      logVerbose("no more free blocks available.");
+      break;
+    }
+
+    snprintf(message, 100, "found a free block at %d", firstFreeBlockPosition);
+    logVerbose(message);
+
+    // Save the previous blockAddress
+    size_t previousBlockAddress =
+        octal_to_size_t(header->files[i].blockAddress);
+
+    // Set the header's blockAddress to the first free block
+    size_t_to_octal(header->files[i].blockAddress, firstFreeBlockPosition);
+
+    snprintf(message, 100, "updated block address for %s from %s to %ld",
+             header->files[i].filename, previousBlockAddress,
+             firstFreeBlockPosition);
+    logVerbose(message);
+
+    size_t targetBlockAddress = firstFreeBlockPosition;
+
+    while (previousBlockAddress != 0) {
+      struct block_data block;
+
+      fseek(archive, previousBlockAddress, SEEK_SET);
+      fread(&block, BLOCK_SIZE, 1, archive);
+
+      // Move block to the target address
+      size_t nextBlockAddress = octal_to_size_t(block.next);
+
+      size_t_to_octal(block.next, targetBlockAddress / (BLOCK_SIZE));
+
+      fseek(archive, targetBlockAddress, SEEK_SET);
+      fwrite(&block, BLOCK_SIZE, 1, archive);
+
+      // Log the move
+      snprintf(message, 100, "moved block from %ld to %ld",
+               previousBlockAddress / (BLOCK_SIZE),
+               targetBlockAddress / (BLOCK_SIZE));
+
+      logVerbose(message);
+
+      // Prepare for the next iteration
+      previousBlockAddress = nextBlockAddress;
+      targetBlockAddress += BLOCK_SIZE;
+    }
+
+    // Mark the last block of this file as free and update in the archive
+    struct block_data block;
+
+    memset(&block, 0, sizeof(block));
+    size_t_to_octal(block.isFree, 1);
+
+    fseek(archive, targetBlockAddress - BLOCK_SIZE, SEEK_SET);
+    fwrite(&block, BLOCK_SIZE, 1, archive);
+
+    // Log final block update
+    snprintf(message, 100, "last block at %ld marked as free",
+             targetBlockAddress - sizeof(struct block_data));
+    logVerbose(message);
+
+    // Update header's block address to new starting position
+    size_t_to_octal(header->files[i].blockAddress, firstFreeBlockPosition);
+  }
+
+  // Check and remove free blocks at the end of the file
+  if (removeFreeBlocksAtEnd(archive, header) != 0) {
+    free(header);
+    fclose(archive);
+    return 1;
+  }
+
+  // rewrite the header with new directions
+  fseek(archive, 0, SEEK_SET);
+  fwrite(header, MAX_HEADER_SIZE, 1, archive);
+
+  free(header);
+  fclose(archive);
+
+  logVerbose("file desfragmented successfully");
+
+  return 0;
+}
+
+/**
+ * @description: will remove unused blocks at the end of file
+ * @parameter: (archive) the tar FILE
+ * @parameter: (header) the tar FAT header
+ * @output: the exit code
+ */
+int removeFreeBlocksAtEnd(FILE *archive, struct posix_header *header) {
+  char message[100];
+
+  // Seek to the end of the file to find the last block
+  fseek(archive, 0, SEEK_END);
+  long end_pos = ftell(archive);
+
+  long current_pos = end_pos - BLOCK_SIZE;
+  int counter = 0;
+
+  while (current_pos >= MAX_HEADER_SIZE) {
+    struct block_data block;
+
+    fseek(archive, current_pos, SEEK_SET);
+    fread(&block, BLOCK_SIZE, 1, archive);
+
+    if (octal_to_size_t(block.isFree) == 0) {
+      break;
+    }
+
+    snprintf(message, 100, "block #%d will be removed",
+             current_pos / (BLOCK_SIZE));
+    logVerbose(message);
+
+    current_pos -= BLOCK_SIZE;
+    counter++;
+  }
+  snprintf(message, 100, "found %d free blocks at the end", counter);
+  logVerbose(message);
+
+  if (counter > 0) {
+
+    if (ftruncate(fileno(archive), current_pos) != 0) {
+      return -1;
+    }
+  }
+
   return 0;
 }
 

@@ -11,6 +11,7 @@ test: build
 	./bin/star -xvf output.tar
 	python3 hola_mundo.py
 	./bin/star -uvf output.tar test/modified/archivito.txt
+	./bin/star -pvf output.tar
 	./bin/star -xvf output.tar
 	ls -lh | grep archivito.txt
 	tail -n 2 archivito.txt
