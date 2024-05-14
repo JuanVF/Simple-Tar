@@ -341,7 +341,52 @@ void extractFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
  * @parameter: (filename) the tar filename to be listed
  * @output: the exit code
  */
-int list(char *filename) { return 0; }
+int list(char *filename) { char message[100];
+  FILE *archive = fopen(filename, "rb");
+  if (!archive) {
+    logError("Failed to open tar archive file. Double check if the input file "
+             "exists.");
+    return 1;
+  }
+
+  struct posix_header *header = malloc(sizeof(struct posix_header));
+
+  if (!header) {
+    logError("Memory allocation for header failed.");
+    fclose(archive);
+    return 1;
+  }
+
+  if (fread(header, MAX_HEADER_SIZE, 1, archive) != 1) {
+    logError("Failed to read header.");
+    free(header);
+    fclose(archive);
+    return 1;
+  }
+
+  listFilesByTarFile(header, archive);
+
+  free(header);
+  fclose(archive);
+  return 0;
+  }
+  /**
+ * @description: list all the files out of a tar file
+ * @parameter: (header) the FAT header of the tar file
+ * @parameter: (archive) the tar file to be read.
+ * @output: n/a
+ */
+void listFilesByTarFile(struct posix_header *header, FILE *archive) {
+  char message[100];
+
+  for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
+
+    //struct posix_file_info fileInfo = header->files[i];
+    snprintf(message, 100, "this is a file present: %s", header->files[i].filename);
+    logVerbose(message);
+    //extractFileByTarFile(archive, &fileInfo);
+  }
+}
 
 /**
  * ------------------------------------------
