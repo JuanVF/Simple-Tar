@@ -452,7 +452,25 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
 }
 
 void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo){
+  long blockAddress = strtol(fileInfo->blockAddress, NULL, 10);
+  long size = strtol(fileInfo->size, NULL, 10);
+  long blocksToClear = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
+  struct block_data block;
+
+  // Mark blocks as free
+  for (long i = 0; i < blocksToClear; i++) {
+    fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
+    fread(&block, sizeof(struct block_data), 1, archive);
+    strcpy(block.isFree, "1");
+    fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
+    fwrite(&block, sizeof(struct block_data), 1, archive);
+
+    blockAddress = strtol(block.next, NULL, 10);
+    if (blockAddress == 0) {
+      break;
+    }
+  }
 }
 
 
