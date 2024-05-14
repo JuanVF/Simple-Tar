@@ -405,6 +405,32 @@ int delete(char *files[], int fileCount, char *filename) {
   char message[100];
   snprintf(message, 100, "starting to delete archives inside %s", filename);
   logVerbose(message);
+  FILE *archive = fopen(filename, "rb");
+  if (!archive) {
+    logError("Failed to open tar archive file. Double check if the input file "
+             "exists.");
+    return 1;
+  }
+
+  struct posix_header *header = malloc(sizeof(struct posix_header));
+
+  if (!header) {
+    logError("Memory allocation for header failed.");
+    fclose(archive);
+    return 1;
+  }
+
+  if (fread(header, MAX_HEADER_SIZE, 1, archive) != 1) {
+    logError("Failed to read header.");
+    free(header);
+    fclose(archive);
+    return 1;
+  }
+
+  //deleteFilesByTarFile(header, archive);
+
+  free(header);
+  fclose(archive);
 
   return 0;
 }
