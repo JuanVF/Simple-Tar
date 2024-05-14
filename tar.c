@@ -427,13 +427,33 @@ int delete(char *files[], int fileCount, char *filename) {
     return 1;
   }
 
-  //deleteFilesByTarFile(header, archive);
+  deleteFilesByTarFile(header, archive);
 
   free(header);
   fclose(archive);
 
   return 0;
 }
+
+  /**
+ * @description: list all the files out of a tar file
+ * @parameter: (header) the FAT header of the tar file
+ * @parameter: (archive) the tar file to be read.
+ * @output: n/a
+ */
+void deleteFilesByTarFile(struct posix_header *header, FILE *archive) {
+  char message[100];
+
+  for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
+
+    struct posix_file_info fileInfo = header->files[i];
+    /*snprintf(message, 100, "this is a file present: %s", header->files[i].filename);
+    logVerbose(message);*/
+    //extractFileByTarFile(archive, &fileInfo);
+  }
+}
+
+
 
 /**
  * ------------------------------------------
