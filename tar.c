@@ -449,7 +449,6 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
     }
   }
 }
-
 void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {  
   char message[100];
   snprintf(message, 100, "INFO: [N : %s] [B : %ld] [S : %ld]", fileInfo->filename, octal_to_size_t(fileInfo->blockAddress), octal_to_size_t(fileInfo->size));
@@ -468,24 +467,28 @@ void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
 
   // // Eliminar la entrada del archivo del encabezado
   fseek(archive, 0, SEEK_SET);
-  struct posix_header *header = malloc(sizeof(struct posix_header));
+  struct posix_header *header = malloc(MAX_HEADER_SIZE);
+  struct posix_header *new_header = malloc(MAX_HEADER_SIZE);
+
+  int c = 0;
 
   while (fread(header, MAX_HEADER_SIZE, 1, archive) == 1) {
       for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
-          if (strcmp(header->files[i].filename, fileInfo->filename) == 0) {
-              // Eliminar la entrada del archivo del encabezado
-              memset(&header->files[i], 0, sizeof(struct posix_file_info));
-              fseek(archive, 0, SEEK_SET);
-              fwrite(header, MAX_HEADER_SIZE, 1, archive);
-              return;
+          if (strcmp(header->files[i].filename, fileInfo->filename) != 0) {
+              new_header->files[c] = header->files[i];
+              c++;
           }
       }
   }
 
+  fseek(archive, 0, SEEK_SET);
+  fwrite(new_header, MAX_HEADER_SIZE, 1, archive);
+  free(header);
+  free(new_header);
+
   snprintf(message, 100, "file deleted successfully: %s", fileInfo->filename);
   logVerbose(message);
 }
-
 
 /**
  * ------------------------------------------
@@ -819,7 +822,93 @@ void linkUpdatedBlocks(size_t lastBlockIndex, size_t firstPosition,
  *          APPEND COMMAND
  * ------------------------------------------
  */
+/*void updateHeader(struct posix_header *header, char *filename) {
+    // Encuentra una entrada vacía en el encabezado
+    logError("Zona 1.\n");
+    int emptyIndex = -1;
+    for (int i = 0; i < MAX_FILES; i++) {
+      logError("zona1.1");
+        if (strlen(header->files[i].filename) == 0) {
+            emptyIndex = i;
+            break;
+        }
+    }
+    logError("Zona 2");
+    // Si no se encontró una entrada vacía, el encabezado ya está lleno
+    if (emptyIndex == -1) {
+        logError("No hay espacio disponible en el encabezado para más archivos.\n");
+        return;
+    }
 
+    // Actualiza la entrada vacía con la información del nuevo archivo
+    snprintf(header->files[emptyIndex].filename, sizeof(header->files[emptyIndex].filename), "%s", filename);
+    FILE *file = fopen(filename, "r+b");
+    if (!file) {
+      logError("Error al abrir el archivo.\n");
+        return;
+    }
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    fclose(file);
+    snprintf(header->files[emptyIndex].size, sizeof(header->files[emptyIndex].size), "%011lo", (unsigned long)fileSize);
+    snprintf(header->files[emptyIndex].blockAddress, sizeof(header->files[emptyIndex].blockAddress), "%011lo", (unsigned long)0); // Este valor se actualizará más tarde
+
+    // Se ha actualizado una entrada en el encabezado, se puede salir de la función
+}*/
+
+void updateHeader(struct posix_header *header, char *filename) {
+    // Validación básica de los parámetros de entrada
+    if (!header) {
+        printf("Error: el puntero del encabezado es nulo.\n");
+        return;
+    }
+    if (!filename) {
+        printf("Error: el puntero del nombre del archivo es nulo.\n");
+        return;
+    }
+
+    // Mensaje de depuración
+    printf("Actualizando el encabezado para el archivo: %s\n", filename);
+
+    // Encuentra una entrada vacía en el encabezado
+    int emptyIndex = -1;
+    for (int i = 0; i < MAX_FILES; i++) {
+        printf("Revisando header->files[%d].filename: '%s'\n", i, header->files[i].filename);
+        if (strlen(header->files[i].filename) == 0) {
+            emptyIndex = i;
+            break;
+        }
+    }
+
+    // Si no se encontró una entrada vacía, el encabezado ya está lleno
+    if (emptyIndex == -1) {
+        printf("No hay espacio disponible en el encabezado para más archivos.\n");
+        return;
+    }
+
+    // Mensaje de depuración
+    printf("Encontrada entrada vacía en el índice: %d\n", emptyIndex);
+
+    // Actualiza la entrada vacía con la información del nuevo archivo
+    snprintf(header->files[emptyIndex].filename, sizeof(header->files[emptyIndex].filename), "%s", filename);
+
+    // Abrir el archivo para obtener su tamaño
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        printf("Error al abrir el archivo %s.\n", filename);
+        return;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    fclose(file);
+
+    snprintf(header->files[emptyIndex].size, sizeof(header->files[emptyIndex].size), "%011lo", (unsigned long)fileSize);
+    snprintf(header->files[emptyIndex].blockAddress, sizeof(header->files[emptyIndex].blockAddress), "%011lo", (unsigned long)0); // Este valor se actualizará más tarde
+
+    // Mensaje de depuración
+    printf("Archivo %s agregado al encabezado en la posición %d con tamaño %ld bytes.\n", filename, emptyIndex, fileSize);
+}
 /**
  * @description: will add n new archives to the tar file
  * @parameter: (files) the files name to be deleted
@@ -831,9 +920,119 @@ int append(char *files[], int fileCount, char *filename) {
   char message[100];
   snprintf(message, 100, "starting to add new archives inside %s", filename);
   logVerbose(message);
+  FILE *archive = fopen(filename, "r+b");
+  if (!archive) {
+    logError("Failed to open tar archive file. Double check if the input file "
+             "exists.");
+    return 1;
+  }
+
+  struct posix_header *header = malloc(sizeof(struct posix_header));
+
+  if (!header) {
+    logError("Memory allocation for header failed.");
+    fclose(archive);
+    return 1;
+  }
+
+  if (fread(header, MAX_HEADER_SIZE, 1, archive) != 1) {
+    logError("Failed to read header.");
+    free(header);
+    fclose(archive);
+    return 1;
+  }
+
+
+  appendFilesByTarFile(header, archive, files, fileCount);
+
+  free(header);
+  fclose(archive);
 
   return 0;
 }
+
+  /**
+ * @description: append all the files to a tar file
+ * @parameter: (header) the FAT header of the tar file
+ * @parameter: (archive) the tar file to be read.
+ * @parameter: (files) the files that are going to be append.
+ * @parameter: (fileCount) quantity of files to be append.
+ * @output: n/a
+ */
+void appendFilesByTarFile(struct posix_header *header, FILE *archive, char *files[], int fileCount) {
+    char message[100];
+    // Encuentra el final del archivo
+    fseek(archive, 0, SEEK_END);
+    long endPosition = ftell(archive);
+
+    // Calcula el tamaño del encabezado
+    long headerSize = MAX_HEADER_SIZE * MAX_FILES;
+
+    // Verifica si hay suficiente espacio para los nuevos archivos
+    long availableSpace = endPosition - headerSize;
+    long requiredSpace = 0;
+    for (int i = 0; i < fileCount; i++) {
+        FILE *file = fopen(files[i], "r+b");
+        if (!file) {
+            snprintf(message, sizeof(message), "Failed to open file %s", files[i]);
+            logError(message);
+            continue;
+        }
+        fseek(file, 0, SEEK_END);
+        long fileSize = ftell(file);
+        requiredSpace += fileSize;
+        fclose(file);
+    }
+
+    // Si no hay suficiente espacio, crea nuevos bloques
+    bool space = requiredSpace < availableSpace;
+    if (requiredSpace > availableSpace) {
+        long additionalSpaceNeeded = requiredSpace - availableSpace;
+        long additionalBlocksNeeded = (additionalSpaceNeeded + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+        fseek(archive, 0, SEEK_END);
+        for (long i = 0; i < additionalBlocksNeeded; i++) {
+            struct block_data newBlock;
+            strcpy(newBlock.isFree, "1");
+            strcpy(newBlock.next, "00000000000");
+            fwrite(&newBlock, BLOCK_SIZE, 1, archive);
+        }
+    }
+
+    // Actualiza el encabezado con información sobre los nuevos archivos
+    int filesAdded = 0;
+    for (int i = 0; i < MAX_FILES && filesAdded < fileCount; i++) {
+        if (strlen(header->files[i].filename) == 0) {
+          updateHeader(&header[i], files[filesAdded]);
+          filesAdded++;
+        }
+    }
+
+    // Escribe el encabezado actualizado al principio del archivo TAR
+    fseek(archive, 0, SEEK_SET);
+    fwrite(header, sizeof(struct posix_header), MAX_FILES, archive);
+
+    // Escribe los datos de los archivos al final del archivo TAR
+    for (int i = 0; i < fileCount; i++) {
+        FILE *file = fopen(files[i], "rb");
+        if (!file) {
+            snprintf(message, sizeof(message), "Failed to open file %s", files[i]);
+            logError(message);
+            continue;
+        }
+        fseek(file, 0, SEEK_SET);
+        char buffer[BLOCK_SIZE];
+        size_t bytesRead;
+        while ((bytesRead = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+            fwrite(buffer, 1, bytesRead, archive);
+        }
+        fclose(file);
+    }
+
+    snprintf(message, sizeof(message), "%d files added to %s", fileCount, files);
+    logVerbose(message);
+}
+
 
 /**
  * ------------------------------------------
