@@ -454,30 +454,31 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
 void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {  
   char message[100];
   // Obtener el bloque de datos del archivo
-    long blockAddress = strtol(fileInfo->blockAddress, NULL, 8);
-    fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
+  long blockAddress = strtol(fileInfo->blockAddress, NULL, 8);
+  fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
 
-    // Marcar el bloque como libre
-    struct block_data block;
-    fread(&block, sizeof(struct block_data), 1, archive);
-    strcpy(block.isFree, "1");
-    fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
-    fwrite(&block, sizeof(struct block_data), 1, archive);
+  // Marcar el bloque como libre
+  struct block_data block;
+  fread(&block, BLOCK_SIZE, 1, archive);
+  strcpy(block.isFree, "1");
+  fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
+  fwrite(&block, BLOCK_SIZE, 1, archive);
 
-    // Eliminar la entrada del archivo del encabezado
-    fseek(archive, 0, SEEK_SET);
-    struct posix_header header;
-    while (fread(&header, sizeof(struct posix_header), 1, archive) == 1) {
-        for (int i = 0; i < MAX_FILES && strlen(header.files[i].filename) > 0; i++) {
-            if (strcmp(header.files[i].filename, fileInfo->filename) == 0) {
-                // Eliminar la entrada del archivo del encabezado
-                memset(&header.files[i], 0, sizeof(struct posix_file_info));
-                fseek(archive, -sizeof(struct posix_header), SEEK_CUR);
-                fwrite(&header, sizeof(struct posix_header), 1, archive);
-                return;
-            }
-        }
-    }
+  // Eliminar la entrada del archivo del encabezado
+  fseek(archive, 0, SEEK_SET);
+  struct posix_header *header = malloc(sizeof(struct posix_header));
+
+  while (fread(header, MAX_HEADER_SIZE, 1, archive) == 1) {
+      for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
+          if (strcmp(header->files[i].filename, fileInfo->filename) == 0) {
+              // Eliminar la entrada del archivo del encabezado
+              memset(&header->files[i], 0, sizeof(struct posix_file_info));
+              fseek(archive, -MAX_HEADER_SIZE, SEEK_CUR);
+              fwrite(header, MAX_HEADER_SIZE, 1, archive);
+              return;
+          }
+      }
+  }
 
   snprintf(message, 100, "Ya termino la funcion y se borro el archivo: %s", fileInfo->filename);
   logVerbose(message);
