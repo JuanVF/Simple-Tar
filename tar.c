@@ -443,7 +443,7 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
 
   for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
     for (int x = 0; x<fileCount; x++){
-      if (strcmp (header->files[i].filename, files[x]) == 0){
+      if (strcmp (header->files[i].filename, get_filename(files[x])) == 0){
         struct posix_file_info fileInfo = header->files[i];
         deleteFileByTarFile(archive, &fileInfo);
       }
