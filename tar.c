@@ -433,7 +433,7 @@ int delete(char *files[], int fileCount, char *filename) {
 }
 
   /**
- * @description: list all the files out of a tar file
+ * @description: delete all the files out of a tar file
  * @parameter: (header) the FAT header of the tar file
  * @parameter: (archive) the tar file to be read.
  * @output: n/a
@@ -451,26 +451,40 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
   }
 }
 
-void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo){
-  long blockAddress = strtol(fileInfo->blockAddress, NULL, 10);
-  long size = strtol(fileInfo->size, NULL, 10);
-  long blocksToClear = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
+    long blockAddress = strtol(fileInfo->blockAddress, NULL, 8); // Convertir a base 8
+    long size = strtol(fileInfo->size, NULL, 8); // Convertir a base 8
+    long blocksToClear = (size + BLOCK_SIZE - 12 - 1) / (BLOCK_SIZE - 12); // Calcular el número de bloques a borrar
 
-  struct block_data block;
+    struct block_data block;
 
-  // Mark blocks as free
-  for (long i = 0; i < blocksToClear; i++) {
-    fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
-    fread(&block, sizeof(struct block_data), 1, archive);
-    strcpy(block.isFree, "1");
-    fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
-    fwrite(&block, sizeof(struct block_data), 1, archive);
+    // Marcar los bloques como libres
+    for (long i = 0; i < blocksToClear; i++) {
+        fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET); // Ir al bloque
+        fread(&block, sizeof(struct block_data), 1, archive); // Leer el bloque
+        strcpy(block.isFree, "1"); // Marcar como libre
+        fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET); // Regresar al inicio del bloque
+        fwrite(&block, sizeof(struct block_data), 1, archive); // Escribir el bloque actualizado
 
-    blockAddress = strtol(block.next, NULL, 10);
-    if (blockAddress == 0) {
-      break;
+        blockAddress = strtol(block.next, NULL, 8); // Avanzar al siguiente bloque
+        if (blockAddress == 0) {
+            break;
+        }
     }
-  }
+
+    // Borrar la entrada del encabezado correspondiente al archivo
+    fseek(archive, 0, SEEK_SET); // Ir al inicio del archivo
+    struct posix_header header;
+    while (fread(&header, sizeof(struct posix_header), 1, archive) == 1) { // Leer el encabezado
+        for (int i = 0; i < MAX_FILES && strlen(header.files[i].filename) > 0; i++) { // Recorrer las entradas del encabezado
+            if (strcmp(header.files[i].filename, fileInfo->filename) == 0) { // Encontrar la entrada correspondiente al archivo
+                memset(&header.files[i], 0, sizeof(struct posix_file_info)); // Borrar la entrada
+                fseek(archive, -sizeof(struct posix_header), SEEK_CUR); // Retroceder al inicio del encabezado
+                fwrite(&header, sizeof(struct posix_header), 1, archive); // Escribir el encabezado actualizado
+                return;
+            }
+        }
+    }
 }
 
 
