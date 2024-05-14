@@ -74,4 +74,10 @@ void linkUpdatedBlocks(size_t lastBlockIndex, size_t firstPosition,
 
 // will go to the end of file and remove last unused blocks
 int removeFreeBlocksAtEnd(FILE *archive, struct posix_header *header);
+
+void listFilesByTarFile(struct posix_header *header, FILE *archive);
+
+void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *files[], int fileCount);
+
+void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo);
 #endif
