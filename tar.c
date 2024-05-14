@@ -402,7 +402,7 @@ int delete(char *files[], int fileCount, char *filename) {
   char message[100];
   snprintf(message, 100, "starting to delete archives inside %s", filename);
   logVerbose(message);
-  FILE *archive = fopen(filename, "rb");
+  FILE *archive = fopen(filename, "r+b");
   if (!archive) {
     logError("Failed to open tar archive file. Double check if the input file "
              "exists.");
@@ -451,7 +451,7 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
   }
 }
 
-void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
+void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {  
   char message[100];
   // Obtener el bloque de datos del archivo
     long blockAddress = strtol(fileInfo->blockAddress, NULL, 8);
