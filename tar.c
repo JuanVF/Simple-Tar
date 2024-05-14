@@ -154,7 +154,7 @@ int createFATBlocks(struct posix_header *file_header, FILE *output,
 
     snprintf(message, sizeof(message),
              "num blocks [%d] for [%s] because of size [%d / %d]", numBlocks,
-             fileInfo.filename, octal_to_size_t(fileInfo.size),
+             fileInfo.filename, (int) octal_to_size_t(fileInfo.size),
              BLOCK_SIZE - 12);
     logVerbose(message);
 
@@ -293,7 +293,7 @@ void extractFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
   size_t totalBytesWritten = 0;
 
   while (totalBytesWritten < fileSize) {
-    snprintf(message, sizeof(message), "reading block #%d", currentBlockIndex);
+    snprintf(message, sizeof(message), "reading block #%d", (int) currentBlockIndex);
     logVerbose(message);
 
     // Seek to the current block in the archive file
@@ -581,7 +581,7 @@ void updateBlocksInFile(char *files[], int fileCount,
 
     snprintf(message, 100,
              "file %s has %d blocks and will require now %d blocks.",
-             header->files[fileIndex].filename, existingBlocks, newNumBlocks);
+             header->files[fileIndex].filename, (int) existingBlocks, (int) newNumBlocks);
     logVerbose(message);
 
     size_t currentBlockIndex =
@@ -657,8 +657,7 @@ void overwriteExistingBlocks(char *filename, size_t *currentBlockIndex,
   char message[100];
 
   while ((*blockCount) < (*newNumBlocks)) {
-    snprintf(message, 100, "reading block #%d for file ", *currentBlockIndex,
-             filename);
+    snprintf(message, 100, "reading block #%d for file ", (int) *currentBlockIndex);
     logVerbose(message);
 
     fseek(archive, MAX_HEADER_SIZE + (*currentBlockIndex) * BLOCK_SIZE,
@@ -778,7 +777,7 @@ void updateAtNewBlocks(size_t blockCount, size_t newNumBlocks,
 
     snprintf(message, 100,
              "new block for %s is at block #%zu and its next will be #%d",
-             filename, pos, octal_to_size_t(newBlock.next));
+             filename, pos, (int) octal_to_size_t(newBlock.next));
     logVerbose(message);
 
     fwrite(&newBlock, BLOCK_SIZE, 1, archive);
@@ -805,7 +804,7 @@ void linkUpdatedBlocks(size_t lastBlockIndex, size_t firstPosition,
   fread(&lastBlock, BLOCK_SIZE, 1, archive);
 
   snprintf(message, 100, "new next in %s at block #%zu will be %d", filename,
-           lastBlockIndex, firstPosition);
+           lastBlockIndex, (int) firstPosition);
   logVerbose(message);
 
   size_t_to_octal(lastBlock.next, firstPosition);
@@ -910,7 +909,7 @@ int pack(char *filename) {
       break;
     }
 
-    snprintf(message, 100, "found a free block at %d", firstFreeBlockPosition);
+    snprintf(message, 100, "found a free block at %d", (int) firstFreeBlockPosition);
     logVerbose(message);
 
     // Save the previous blockAddress
@@ -920,7 +919,7 @@ int pack(char *filename) {
     // Set the header's blockAddress to the first free block
     size_t_to_octal(header->files[i].blockAddress, firstFreeBlockPosition);
 
-    snprintf(message, 100, "updated block address for %s from %s to %ld",
+    snprintf(message, 100, "updated block address for %s from %ld to %ld",
              header->files[i].filename, previousBlockAddress,
              firstFreeBlockPosition);
     logVerbose(message);
@@ -1016,7 +1015,7 @@ int removeFreeBlocksAtEnd(FILE *archive, struct posix_header *header) {
       break;
     }
 
-    snprintf(message, 100, "block #%d will be removed",
+    snprintf(message, 100, "block #%ld will be removed",
              current_pos / (BLOCK_SIZE));
     logVerbose(message);
 
