@@ -452,6 +452,7 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
 }
 
 void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
+  char message[100];
     long blockAddress = strtol(fileInfo->blockAddress, NULL, 8); // Convertir a base 8
     long size = strtol(fileInfo->size, NULL, 8); // Convertir a base 8
     long blocksToClear = (size + BLOCK_SIZE - 12 - 1) / (BLOCK_SIZE - 12); // Calcular el número de bloques a borrar
@@ -485,6 +486,8 @@ void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
             }
         }
     }
+  snprintf(message, 100, "Ya termino la funcion y se borro el archivo: %s", fileInfo->filename);
+  logVerbose(message);
 }
 
 
