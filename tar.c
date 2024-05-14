@@ -380,8 +380,7 @@ void listFilesByTarFile(struct posix_header *header, FILE *archive) {
   char message[100];
 
   for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
-    snprintf(message, 100, "this is a file present: %s", header->files[i].filename);
-    logVerbose(message);
+    printf("this is a file present: %s\n", header->files[i].filename);
   }
 }
 
@@ -453,18 +452,21 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
 
 void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {  
   char message[100];
-  // Obtener el bloque de datos del archivo
-  long blockAddress = strtol(fileInfo->blockAddress, NULL, 8);
-  fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
+  snprintf(message, 100, "INFO: [N : %s] [B : %ld] [S : %ld]", fileInfo->filename, octal_to_size_t(fileInfo->blockAddress), octal_to_size_t(fileInfo->size));
+  logVerbose(message);
 
-  // Marcar el bloque como libre
+  // Obtener el bloque de datos del archivo
+  long blockAddress = octal_to_size_t(fileInfo->blockAddress);
+  fseek(archive, blockAddress * BLOCK_SIZE + MAX_HEADER_SIZE, SEEK_SET);
+
+  // // Marcar el bloque como libre
   struct block_data block;
   fread(&block, BLOCK_SIZE, 1, archive);
-  strcpy(block.isFree, "1");
-  fseek(archive, blockAddress * BLOCK_SIZE, SEEK_SET);
+  size_t_to_octal(block.isFree, 1);
+  fseek(archive, blockAddress * BLOCK_SIZE + MAX_HEADER_SIZE, SEEK_SET);
   fwrite(&block, BLOCK_SIZE, 1, archive);
 
-  // Eliminar la entrada del archivo del encabezado
+  // // Eliminar la entrada del archivo del encabezado
   fseek(archive, 0, SEEK_SET);
   struct posix_header *header = malloc(sizeof(struct posix_header));
 
@@ -473,14 +475,14 @@ void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo) {
           if (strcmp(header->files[i].filename, fileInfo->filename) == 0) {
               // Eliminar la entrada del archivo del encabezado
               memset(&header->files[i], 0, sizeof(struct posix_file_info));
-              fseek(archive, -MAX_HEADER_SIZE, SEEK_CUR);
+              fseek(archive, 0, SEEK_SET);
               fwrite(header, MAX_HEADER_SIZE, 1, archive);
               return;
           }
       }
   }
 
-  snprintf(message, 100, "Ya termino la funcion y se borro el archivo: %s", fileInfo->filename);
+  snprintf(message, 100, "file deleted successfully: %s", fileInfo->filename);
   logVerbose(message);
 }
 
