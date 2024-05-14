@@ -427,7 +427,7 @@ int delete(char *files[], int fileCount, char *filename) {
     return 1;
   }
 
-  deleteFilesByTarFile(header, archive);
+  deleteFilesByTarFile(header, archive, files, fileCount);
 
   free(header);
   fclose(archive);
@@ -441,12 +441,17 @@ int delete(char *files[], int fileCount, char *filename) {
  * @parameter: (archive) the tar file to be read.
  * @output: n/a
  */
-void deleteFilesByTarFile(struct posix_header *header, FILE *archive) {
+void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *files[], int fileCount) {
   char message[100];
 
   for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
+    for (int x = 0; i<fileCount, fileCount){
+      if (header->files[i].filename == files[x]){
+        printf("SE ENCONTRO UNO IGUAL")
+      }
+    }
 
-    struct posix_file_info fileInfo = header->files[i];
+    //struct posix_file_info fileInfo = header->files[i];
     /*snprintf(message, 100, "this is a file present: %s", header->files[i].filename);
     logVerbose(message);*/
     //extractFileByTarFile(archive, &fileInfo);
