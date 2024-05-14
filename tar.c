@@ -380,11 +380,8 @@ void listFilesByTarFile(struct posix_header *header, FILE *archive) {
   char message[100];
 
   for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
-
-    //struct posix_file_info fileInfo = header->files[i];
     snprintf(message, 100, "this is a file present: %s", header->files[i].filename);
     logVerbose(message);
-    //extractFileByTarFile(archive, &fileInfo);
   }
 }
 
@@ -445,19 +442,18 @@ void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *file
   char message[100];
 
   for (int i = 0; i < MAX_FILES && strlen(header->files[i].filename) > 0; i++) {
-    for (int x = 0; i<fileCount, fileCount){
-      if (header->files[i].filename == files[x]){
-        printf("SE ENCONTRO UNO IGUAL")
+    for (int x = 0; x<fileCount; x++){
+      if (strcmp (header->files[i].filename, files[x]) == 0){
+        struct posix_file_info fileInfo = header->files[i];
+        deleteFileByTarFile(archive, &fileInfo);
       }
     }
-
-    //struct posix_file_info fileInfo = header->files[i];
-    /*snprintf(message, 100, "this is a file present: %s", header->files[i].filename);
-    logVerbose(message);*/
-    //extractFileByTarFile(archive, &fileInfo);
   }
 }
 
+void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo){
+
+}
 
 
 /**
