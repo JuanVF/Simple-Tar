@@ -18,4 +18,4 @@ test: build
 	./bin/star --delete -vf output.tar archivito.txt
 	./bin/star -xvf output.tar
 	./bin/star -tvf output.tar
-	# rm *.tar archivito.txt log1 log2 log3
+	rm *.tar archivito.txt log1 log2 log3
