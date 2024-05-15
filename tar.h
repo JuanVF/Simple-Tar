@@ -80,4 +80,8 @@ void listFilesByTarFile(struct posix_header *header, FILE *archive);
 void deleteFilesByTarFile(struct posix_header *header, FILE *archive, char *files[], int fileCount);
 
 void deleteFileByTarFile(FILE *archive, struct posix_file_info *fileInfo);
+
+void appendFilesByTarFile(struct posix_header *header, FILE *archive, char *files[], int fileCount);
+
+int updateHeader(struct posix_header *header, char *filename);
 #endif
